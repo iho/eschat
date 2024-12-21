@@ -1,0 +1,6 @@
+.erlang.mk
+.idea
+_rel
+deps
+ebin
+*.d
