@@ -17,6 +17,7 @@
 -export([now/0, traverse_fun/0]).
 
 -export([get_user/1]).
+-export([register_user/1]).
 %%-export([get_user/2]).
 %%
 %%
@@ -43,7 +44,7 @@ get_user(Struct) ->
     _ ->
       UserRec = #user{login = Login, password = Password},
       Fun = fun(ConnPid) ->
-        QRes = epgsql:equery(ConnPid, <<"SELECT id FROM public.\"User\" WHERE login = $1 AND passwd = $2">>, [Login, Password]),
+        QRes = epgsql:equery(ConnPid, <<"SELECT id FROM users WHERE login = $1 AND pass = $2">>, [Login, Password]),
         lager:debug("QRES ~p", [QRes]),
         case QRes of
           {ok, _, [{Id}|_]} -> UserRec#user{id = Id};
@@ -59,6 +60,33 @@ get_user(Struct) ->
           Err
       end
   end.
+
+register_user(Json) -> 
+  Password = eschat_xpath:get_val(<<"password">>, Json),
+  Login = eschat_xpath:get_val(<<"login">>, Json),
+  lager:debug("Login ~p Password ~p", [Login, Password]),
+  UserRec = #user{login = Login, password = Password},
+  lager:debug("UserRec ~p", [UserRec]), 
+  Fun = fun(ConnPid) ->
+    QRes = epgsql:equery(ConnPid, <<"INSERT INTO users (login, pass) VALUES ($1, $2) RETURNING id">>, [Login, Password]),
+    lager:debug("QRES ~p", [QRes]),
+    case QRes of
+      {ok, _, _, [{Id}|_]} -> UserRec#user{id = Id};
+      {ok, _, _, []} -> #user{login = Login};
+      _ -> lager:debug("QRES ~p", [QRes]), {error, db_error} 
+    end
+  end,
+
+ Res =  sherlock:transaction(database, Fun),
+ lager:debug("RES ~p", [Res]),  
+ case Res of 
+    #user{id = Id} = Rec ->
+      to_cache(Rec),
+      {ok, Id};
+    {error, _Type} = Err  ->
+      Err
+  end 
+.
 
 name() -> ?MODULE.
 new() ->

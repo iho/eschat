@@ -17,10 +17,7 @@ CREATE TABLE sessions (
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
 
-CREATE TABLE chats (
-    id BIGSERIAL PRIMARY KEY,
-    name VARCHAR NOT NULL
-);
+
 
 CREATE TABLE chat_messages (
     id BIGSERIAL PRIMARY KEY,
