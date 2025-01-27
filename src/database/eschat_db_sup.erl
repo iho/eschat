@@ -55,9 +55,24 @@ init([]) ->
     shutdown => 2000,
     type => worker,
     modules => dynamic},
+  BChild = #{id => 'eschat_users_cache',
+    start => {'eschat_users_cache', start_link, []},
+    restart => permanent,
+    shutdown => 2000,
+    type => worker,
+    modules => dynamic},
+
+  CChild = #{
+    id => 'eschat_sessions_cache',
+    start => {'eschat_sessions_cache', start_link, []},
+    restart => permanent,
+    shutdown => 2000,
+    type => worker,
+    modules => dynamic
+  },
 
 
-  {ok, {SupFlags, [AChild]}}.
+  {ok, {SupFlags, [AChild, BChild, CChild]}}.
 
 %%%===================================================================
 %%% Internal functions
