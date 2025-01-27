@@ -82,6 +82,28 @@ handle_request(<<"GET">>, <<"v1">>, <<"sessions">>, Req0, State) ->
           reply(401, #{status => <<"error">>, message => <<"Invalid session">>}, Req0, State)
       end
   end;
+handle_request(<<"GET">>, <<"v1">>, <<"session">>, Req0, State) ->
+  case cowboy_req:header(<<"authorization">>, Req0) of
+    undefined ->
+      reply(401, #{status => <<"error">>, message => <<"No session provided">>}, Req0, State);
+    SessionId ->
+      lager:debug("SessionId: ~p~n", [SessionId]),
+      case eschat_db_sessions:get_session_by_id(SessionId) of
+        {ok, UserId} ->
+          {ok, Rec} = eschat_db_users:get_user_by_id(UserId),
+          lager:debug("Rec: ~p~n", [Rec]),  
+          case Rec of
+            #user{id = Id, login = Login} ->
+              UserData = #{id => Id, login => Login},
+              Response = #{status => <<"success">>, sessions => UserData},
+              reply(200, Response, Req0, State);
+            {error, _} ->
+              reply(401, #{status => <<"error">>, message => <<"Invalid session">>}, Req0, State)
+          end;
+        {error, _} ->
+          reply(401, #{status => <<"error">>, message => <<"Invalid session">>}, Req0, State)
+      end
+  end;
 handle_request(_, _, _, Req0, State) ->
   reply(404, #{status => <<"error">>, message => <<"Not found">>}, Req0, State).
 

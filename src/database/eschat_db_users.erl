@@ -1,11 +1,10 @@
 -module(eschat_db_users).
 
--record(user, {id, login, pass}).
-
+-include("eschat_user_h.hrl").
 -export([create_user/2]).
--export([
-    get_user_by_cred/2
-]). 
+-export([get_user_by_cred/2]).
+-export([get_user_by_id/1]).
+
 create_user(Login, Pass) ->
     Fun = fun(ConnPid) ->
              Query = "INSERT INTO users (login, pass) VALUES ($1, $2) RETURNING id",
@@ -13,7 +12,7 @@ create_user(Login, Pass) ->
                  {ok, 1, _, [{Id}]} ->
                      #user{id = Id,
                            login = Login,
-                           pass = Pass};
+                           password = Pass};
                  {error, {error, error, _, unique_violation, _, _}} -> {error, user_exists};
                  Error -> Error
              end
@@ -21,7 +20,7 @@ create_user(Login, Pass) ->
 
     case sherlock:transaction(database, Fun) of
         #user{id = Id} = Rec ->
-            eschat_users_cache:put(Id, #{login => Login, pass => Pass}),
+            eschat_users_cache:put(Id, #{login => Login, password => Pass}),
             {ok, Id};
         {error, _Type} = Err ->
             Err
@@ -34,7 +33,7 @@ get_user_by_cred(Login, Pass) ->
                  {ok, _, [{Id}]} ->
                      #user{id = Id,
                            login = Login,
-                           pass = Pass};
+                           password = Pass};
                  {ok, _, []} -> {error, not_found};
                  Error -> Error
              end
@@ -42,8 +41,30 @@ get_user_by_cred(Login, Pass) ->
 
     case sherlock:transaction(database, Fun) of
         #user{id = Id} = Rec ->
-            eschat_users_cache:put(Id, #{login => Login, pass => Pass}),
+            eschat_users_cache:put(Id, Rec),
             {ok, Id};
+        {error, _Type} = Err ->
+            Err
+    end.
+
+get_user_by_id(UserID) ->
+    Fun = fun(Pid) ->
+             Query = "SELECT id, login, pass FROM users WHERE id = $1 limit 1",
+             case epgsql:equery(Pid, Query, [UserID]) of
+                 {ok, _, [{Id, Login, Pass}]} ->
+                     #user{id = Id,
+                           login = Login,
+                           password = Pass};
+                 {ok, _, []} -> {error, not_found};
+                 Error -> Error
+             end
+          end,
+
+    case sherlock:transaction(database, Fun) of
+        #user{id = Id } = Rec ->
+            lager:debug("User Rec: ~p~n", [Rec]),
+            eschat_users_cache:put(Id, Rec),
+            {ok, Rec};
         {error, _Type} = Err ->
             Err
     end.

@@ -15,7 +15,7 @@
 
 init(Req, _State) ->
     SessionId = cowboy_req:header(<<"authorization">>, Req),
-    case eschat_db:validate_session(SessionId) of
+    case eschat_db_sessions:get_session_by_id(SessionId) of
         {ok, UserId} ->
             {cowboy_websocket, Req, #state{user_id = UserId}};
         _ ->
@@ -26,7 +26,7 @@ websocket_init(State) ->
     {ok, State}.
 
 websocket_handle({text, Message}, State) ->
-    DecodedMsg = eschat_json:decode(Message, [return_maps]),
+    DecodedMsg = eschat_json:decode(Message),
     handle_ws_message(DecodedMsg, State).
 
 websocket_info({chat_msg, ChatId, Msg}, State) ->
@@ -41,7 +41,7 @@ websocket_info(_, State) ->
     {ok, State}.
 
 handle_ws_message(#{<<"type">> := <<"join_chat">>, <<"chat_id">> := ChatId}, State) ->
-    case eschat_db:get_chat_members(ChatId) of
+    case eschat_db_chats:get_chat_members(ChatId) of
         {ok, Members} ->
             IsMember = lists:keymember(State#state.user_id, 1, Members),
             case IsMember of
