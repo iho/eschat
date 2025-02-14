@@ -18,6 +18,14 @@ CREATE TABLE sessions (
 );
 
 
+CREATE TABLE chats (
+    id BIGSERIAL PRIMARY KEY,
+    name VARCHAR NOT NULL,
+    created_at TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+    creator_id BIGINT NOT NULL,
+    FOREIGN KEY (creator_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
 
 CREATE TABLE chat_messages (
     id BIGSERIAL PRIMARY KEY,

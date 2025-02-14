@@ -1,4 +1,5 @@
 -record(chat, {
     id,
-    name
+    name,
+    owner_id
 }).

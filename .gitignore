@@ -5,3 +5,4 @@ deps
 ebin
 *.d
 *.iml
+./db_data
