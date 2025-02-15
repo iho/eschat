@@ -12,6 +12,8 @@
 %% API
 -export([init/2]).
 
+-import(eschat_webutils, [reply/4, error_response/3, success_response/3]).
+
 init(Req0, State) ->
     Method = cowboy_req:method(Req0),
     ChatId = cowboy_req:binding(id, Req0),
@@ -202,32 +204,3 @@ check_auth(Req) ->
                 {error, _} -> {error, invalid_session}
             end
     end.
-
-%% Response formatters
-success_response(Data, Req, State) ->
-    reply(200, Data#{status => <<"success">>}, Req, State).
-
-error_response(no_session, Req, State) ->
-    reply(401, #{status => <<"error">>, message => <<"No session provided">>}, Req, State);
-error_response(invalid_session, Req, State) ->
-    reply(401, #{status => <<"error">>, message => <<"Invalid session">>}, Req, State);
-error_response(invalid_format, Req, State) ->
-    reply(400, #{status => <<"error">>, message => <<"Invalid request format">>}, Req, State);
-error_response(not_owner, Req, State) ->
-    reply(403, #{status => <<"error">>, message => <<"Not chat owner">>}, Req, State);
-error_response(chat_not_found, Req, State) ->
-    reply(404, #{status => <<"error">>, message => <<"Chat not found">>}, Req, State);
-error_response(member_not_found, Req, State) ->
-    reply(404, #{status => <<"error">>, message => <<"Member not found">>}, Req, State);
-error_response(already_member, Req, State) ->
-    reply(409, #{status => <<"error">>, message => <<"User already in chat">>}, Req, State);
-error_response(no_last_read, Req, State) ->
-    reply(404, #{status => <<"error">>, message => <<"No last read message">>}, Req, State);
-error_response(_, Req, State) ->
-    reply(500, #{status => <<"error">>, message => <<"Operation failed">>}, Req, State).
-
-reply(Status, Response, Req, State) ->
-    Req1 = cowboy_req:reply(Status, #{
-        <<"content-type">> => <<"application/json">>
-    }, eschat_json:encode(Response), Req),
-    {ok, Req1, State}.

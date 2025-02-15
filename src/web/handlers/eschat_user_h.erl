@@ -15,7 +15,7 @@
 -include("eschat_user_h.hrl").
 
 -export([init/2]).
-
+-import(eschat_webutils, [reply/4, error_response/3, success_response/3]).
 %% "/api/:vsn/user/:action[/:id]"
 
 init(Req0, State) ->
@@ -122,29 +122,3 @@ create_session_and_respond(UserId, Req, State) ->
         {error, _} ->
             error_response(session_creation_failed, Req, State)
     end.
-
-%% Response formatters
-success_response(Data, Req, State) ->
-    reply(200, Data#{status => <<"success">>}, Req, State).
-
-error_response(invalid_request, Req, State) ->
-    reply(400, #{status => <<"error">>, message => <<"Invalid request format">>}, Req, State);
-error_response(no_session, Req, State) ->
-    reply(401, #{status => <<"error">>, message => <<"No session provided">>}, Req, State);
-error_response(invalid_session, Req, State) ->
-    reply(401, #{status => <<"error">>, message => <<"Invalid session">>}, Req, State);
-error_response(invalid_credentials, Req, State) ->
-    reply(401, #{status => <<"error">>, message => <<"Invalid credentials">>}, Req, State);
-error_response(user_exists, Req, State) ->
-    reply(409, #{status => <<"error">>, message => <<"User already exists">>}, Req, State);
-error_response(not_found, Req, State) ->
-    reply(404, #{status => <<"error">>, message => <<"Not found">>}, Req, State);
-error_response(_, Req, State) ->
-    reply(500, #{status => <<"error">>, message => <<"Internal server error">>}, Req, State).
-
-reply(Status, Response, Req, State) ->
-    Req1 = cowboy_req:reply(Status,
-        #{<<"content-type">> => <<"application/json">>},
-        eschat_json:encode(Response),
-        Req),
-    {ok, Req1, State}.
