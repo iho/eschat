@@ -82,28 +82,9 @@ handle_request(<<"GET">>, <<"v1">>, <<"sessions">>, Req0, State) ->
           reply(401, #{status => <<"error">>, message => <<"Invalid session">>}, Req0, State)
       end
   end;
-handle_request(<<"GET">>, <<"v1">>, <<"session">>, Req0, State) ->
-  case cowboy_req:header(<<"authorization">>, Req0) of
-    undefined ->
-      reply(401, #{status => <<"error">>, message => <<"No session provided">>}, Req0, State);
-    SessionId ->
-      lager:debug("SessionId: ~p~n", [SessionId]),
-      case eschat_db_sessions:get_session_by_id(SessionId) of
-        {ok, UserId} ->
-          {ok, Rec} = eschat_db_users:get_user_by_id(UserId),
-          lager:debug("Rec: ~p~n", [Rec]),  
-          case Rec of
-            #user{id = Id, login = Login} ->
-              UserData = #{id => Id, login => Login},
-              Response = #{status => <<"success">>, sessions => UserData},
-              reply(200, Response, Req0, State);
-            {error, _} ->
-              reply(401, #{status => <<"error">>, message => <<"Invalid session">>}, Req0, State)
-          end;
-        {error, _} ->
-          reply(401, #{status => <<"error">>, message => <<"Invalid session">>}, Req0, State)
-      end
-  end;
+handle_request(<<"GET">>, <<"v1">>, <<"session">>, Req, State) ->
+    with_session(Req, State);
+
 handle_request(_, _, _, Req0, State) ->
   reply(404, #{status => <<"error">>, message => <<"Not found">>}, Req0, State).
 
@@ -114,3 +95,52 @@ reply(Status, Response, Req, State) ->
                      eschat_json:encode(Response),
                      Req),
   {ok, Req1, State}.
+
+
+with_session(Req, State) ->
+    case cowboy_req:header(<<"authorization">>, Req) of
+        undefined -> 
+            error_response(no_session, Req, State);
+        SessionId -> 
+            handle_auth(SessionId, Req, State)
+    end.
+
+handle_auth(SessionId, Req, State) ->
+    lager:debug("SessionId: ~p~n", [SessionId]),
+    case authenticate(SessionId) of
+        {ok, UserData} -> success_response(UserData, Req, State);
+        {error, Reason} -> error_response(Reason, Req, State)
+    end.
+
+authenticate(SessionId) ->
+    with_user_id(eschat_db_sessions:get_session_by_id(SessionId)).
+
+with_user_id({ok, UserId}) ->
+    with_user(eschat_db_users:get_user_by_id(UserId));
+with_user_id({error, _}) ->
+    {error, invalid_session}.
+
+with_user({ok, #user{id = Id, login = Login}}) ->
+    {ok, #{
+        id => Id,
+        login => Login
+    }};
+with_user({error, _}) ->
+    {error, invalid_session}.
+
+success_response(Data, Req, State) ->
+    reply(200, #{
+        status => <<"success">>,
+        sessions => Data
+    }, Req, State).
+
+error_response(no_session, Req, State) ->
+    reply(401, #{
+        status => <<"error">>,
+        message => <<"No session provided">>
+    }, Req, State);
+error_response(invalid_session, Req, State) ->
+    reply(401, #{
+        status => <<"error">>,
+        message => <<"Invalid session">>
+    }, Req, State).
