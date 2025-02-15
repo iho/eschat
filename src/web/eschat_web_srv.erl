@@ -112,8 +112,8 @@ restart() ->
   Rotes =
     [{'_',
       [{"/api/:vsn/user/:action", eschat_user_h, []},
-       {"/api/:vsn/chat/:action[/:id]", eschat_chat_h, []},
-       {"/api/:vsn/session[/:id]", eschat_session_h, []},
+       {"/api/:vsn/chat/:action/:id", eschat_chat_h, []},
+      %  {"/api/:vsn/session[/:id]", eschat_session_h, []},
        {"/api/:vsn/ws", eschat_ws_h, []},
        {'_', eschat_notfound_h, []}]}],
   Dispatch = cowboy_router:compile(Rotes),

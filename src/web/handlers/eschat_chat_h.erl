@@ -1,206 +1,181 @@
-%%%-------------------------------------------------------------------
-%%% @author student
-%%% @copyright (C) 2024, <COMPANY>
-%%% @doc
-%%%
-%%% @end
-%%% Created : 21. Dec 2024 12:14 pm
-%%%-------------------------------------------------------------------
 -module(eschat_chat_h).
--author("student").
+
 -behavior(cowboy_handler).
+
 %% API
 -export([init/2]).
 
--import(eschat_webutils, [reply/4, error_response/3, success_response/3]).
+-import(eschat_webutils,
+        [reply/4,
+         error_response/3,
+         success_response/3]).
+
+%% /api/:vsn/chat/:action/:id"
+-define(ROUTES,
+    #{{<<"v1">>, <<"POST">>, undefined, undefined} =>
+        #{handler => fun handle_create_chat/2,
+          middleware => [fun eschat_webutils:with_auth/3, fun eschat_webutils:with_json_body/3]},
+      
+      {<<"v1">>, <<"GET">>, '_', undefined} =>
+        #{handler => fun handle_get_members/2,
+          middleware => [fun eschat_webutils:with_auth/3]},
+      
+      {<<"v1">>, <<"DELETE">>, '_', undefined} =>
+        #{handler => fun handle_delete_chat/2,
+          middleware => [fun eschat_webutils:with_auth/3]},
+      
+      {<<"v1">>, <<"POST">>, <<"add_member">>, '_'} =>
+        #{handler => fun handle_add_member/2,
+          middleware => [fun eschat_webutils:with_auth/3, fun eschat_webutils:with_json_body/3]},
+      
+      {<<"v1">>, <<"POST">>, <<"remove_member">>, '_'} =>
+        #{handler => fun handle_remove_member/2,
+          middleware => [fun eschat_webutils:with_auth/3, fun eschat_webutils:with_json_body/3]},
+      
+      {<<"v1">>, <<"POST">>, <<"update_name">>, '_'} =>
+        #{handler => fun handle_update_name/2,
+          middleware => [fun eschat_webutils:with_auth/3, fun eschat_webutils:with_json_body/3]},
+      
+      {<<"v1">>, <<"GET">>, <<"last_read">>, '_'} =>
+        #{handler => fun handle_last_read_get/2,
+          middleware => [fun eschat_webutils:with_auth/3]},
+      
+      {<<"v1">>, <<"PUT">>, <<"last_read">>, '_'} =>
+        #{handler => fun handle_last_read_put/2,
+          middleware => [fun eschat_webutils:with_auth/3, fun eschat_webutils:with_json_body/3]}
+    }).
 
 init(Req0, State) ->
+    Vsn = cowboy_req:binding(vsn, Req0),
     Method = cowboy_req:method(Req0),
+    Action = cowboy_req:binding(action, Req0),
     ChatId = cowboy_req:binding(id, Req0),
-    handle_request(Method, ChatId, Req0, State).
+    handle_request(Vsn, Method, Action, ChatId, Req0, State).
 
+handle_request(Vsn, Method, Action, ChatId, Req, State) ->
+    case maps:find({Vsn, Method, Action, ChatId}, ?ROUTES) of
+        {ok, #{handler := Handler, middleware := Middlewares}} ->
+            apply_middleware(Middlewares, Handler, Req#{chat_id => ChatId}, State);
+        error ->
+            error_response(not_found, Req, State)
+    end.
 
-%% API
-handle_request(<<"POST">>, undefined, Req, State) ->
-    with_auth(fun handle_create_chat/3, Req, State);
+%% Middleware application
+apply_middleware([], Handler, Req, State) ->
+    Handler(Req, State);
+apply_middleware([Middleware | Rest], Handler, Req, State) ->
+    Middleware(
+        fun(Req1, State1) -> apply_middleware(Rest, Handler, Req1, State1) end,
+        Req,
+        State
+    ).
 
-handle_request(<<"POST">>, ChatId, Req, State) ->
-    Action = cowboy_req:binding(action, Req),
-    handle_chat_action(Action, ChatId, Req, State);
-
-handle_request(<<"GET">>, ChatId, Req, State) ->
-    with_auth(fun(_UserId, Req1, State1) -> 
-        handle_get_members(ChatId, Req1, State1)
-    end, Req, State);
-
-handle_request(<<"DELETE">>, ChatId, Req, State) ->
-    with_auth(fun(UserId, Req1, State1) ->
-        handle_delete_chat(ChatId, UserId, Req1, State1)
-    end, Req, State).
-
-%% Action handlers
-handle_chat_action(<<"add_member">>, ChatId, Req, State) ->
-    with_auth_and_body(fun(UserId, Body, Req1, State1) ->
-        handle_add_member(ChatId, UserId, Body, Req1, State1)
-    end, Req, State);
-
-handle_chat_action(<<"remove_member">>, ChatId, Req, State) ->
-    with_auth_and_body(fun(UserId, Body, Req1, State1) ->
-        handle_remove_member(ChatId, UserId, Body, Req1, State1)
-    end, Req, State);
-
-handle_chat_action(<<"update_name">>, ChatId, Req, State) ->
-    with_auth_and_body(fun(UserId, Body, Req1, State1) ->
-        handle_update_name(ChatId, UserId, Body, Req1, State1)
-    end, Req, State);
-
-handle_chat_action(<<"last_read">>, ChatId, Req, State) ->
-    with_auth(fun(UserId, Req1, State1) ->
-        Method = cowboy_req:method(Req1),
-        handle_last_read(Method, ChatId, UserId, Req1, State1)
-    end, Req, State).
-
-%% Chat operations
-handle_create_chat(UserId, Req, State) ->
-    with_body(fun(Body, Req1) ->
-        case Body of
-            #{<<"name">> := Name} ->
-                case eschat_db_chats:create_chat(Name, UserId) of
-                    {ok, ChatId} -> success_response(#{chat_id => ChatId}, Req1, State);
-                    {error, _} -> error_response(create_failed, Req1, State)
-                end;
-            _ -> 
-                error_response(invalid_format, Req1, State)
-        end
-    end, Req).
-
-handle_get_members(ChatId, Req, State) ->
+%% Handler implementations remain the same as in your original code
+handle_create_chat(Req=#{user_id := UserId, json_data := #{<<"name">> := Name}}, State) ->
+    case eschat_db_chats:create_chat(Name, UserId) of
+        {ok, ChatId} -> 
+            success_response(#{chat_id => ChatId}, Req, State);
+        {error, _} -> 
+            error_response(create_failed, Req, State)
+    end;
+handle_create_chat(Req, State) ->
+    error_response(invalid_format, Req, State).
+handle_get_members(Req=#{chat_id := ChatId}, State) ->
     case eschat_db_chatmembers:get_members(ChatId) of
-        {ok, Members} -> 
+        {ok, Members} ->
             success_response(#{members => Members}, Req, State);
-        {error, not_found} -> 
+        {error, not_found} ->
             error_response(chat_not_found, Req, State);
-        {error, _} -> 
+        {error, _} ->
             error_response(operation_failed, Req, State)
     end.
 
-handle_delete_chat(ChatId, UserId, Req, State) ->
+handle_delete_chat(Req=#{chat_id := ChatId, user_id := UserId}, State) ->
     case eschat_db_chats:delete_chat(ChatId, UserId) of
-        ok -> 
+        ok ->
             success_response(#{}, Req, State);
-        {error, not_owner} -> 
+        {error, not_owner} ->
             error_response(not_owner, Req, State);
-        {error, not_found} -> 
+        {error, not_found} ->
             error_response(chat_not_found, Req, State);
-        {error, _} -> 
+        {error, _} ->
             error_response(operation_failed, Req, State)
     end.
 
-handle_add_member(ChatId, UserId, #{<<"login">> := UserLogin}, Req, State) ->
+handle_add_member(Req=#{
+    chat_id := ChatId,
+    user_id := UserId,
+    json_data := #{<<"login">> := UserLogin}
+}, State) ->
     case eschat_db_chats:add_member(ChatId, UserLogin, UserId) of
-        {ok, added} -> 
+        {ok, added} ->
             success_response(#{}, Req, State);
-        {error, not_owner} -> 
+        {error, not_owner} ->
             error_response(not_owner, Req, State);
-        {error, already_member} -> 
+        {error, already_member} ->
             error_response(already_member, Req, State);
-        {error, _} -> 
+        {error, _} ->
             error_response(operation_failed, Req, State)
     end;
-handle_add_member(_, _, _, Req, State) ->
+handle_add_member(Req, State) ->
     error_response(invalid_format, Req, State).
 
-handle_remove_member(ChatId, UserId, #{<<"user_id">> := MemberId}, Req, State) ->
+handle_remove_member(Req=#{
+    chat_id := ChatId,
+    user_id := UserId,
+    json_data := #{<<"user_id">> := MemberId}
+}, State) ->
     case eschat_db_chats:remove_member(ChatId, MemberId, UserId) of
-        ok -> 
+        ok ->
             success_response(#{}, Req, State);
-        {error, not_owner} -> 
+        {error, not_owner} ->
             error_response(not_owner, Req, State);
-        {error, not_found} -> 
+        {error, not_found} ->
             error_response(member_not_found, Req, State);
-        {error, _} -> 
+        {error, _} ->
             error_response(operation_failed, Req, State)
     end;
-handle_remove_member(_, _, _, Req, State) ->
+handle_remove_member(Req, State) ->
     error_response(invalid_format, Req, State).
 
-handle_update_name(ChatId, UserId, #{<<"name">> := NewName}, Req, State) ->
+handle_update_name(Req=#{
+    chat_id := ChatId,
+    user_id := UserId,
+    json_data := #{<<"name">> := NewName}
+}, State) ->
     case eschat_db_chats:update_name(ChatId, NewName, UserId) of
+        ok ->
+            success_response(#{}, Req, State);
+        {error, not_owner} ->
+            error_response(not_owner, Req, State);
+        {error, not_found} ->
+            error_response(chat_not_found, Req, State);
+        {error, _} ->
+            error_response(operation_failed, Req, State)
+    end;
+handle_update_name(Req, State) ->
+    error_response(invalid_format, Req, State).
+
+handle_last_read_get(Req=#{chat_id := ChatId, user_id := UserId}, State) ->
+    case eschat_db_messages:get_last_read(ChatId, UserId) of
+        {ok, MessageId} ->
+            success_response(#{message_id => MessageId}, Req, State);
+        {error, not_found} ->
+            error_response(no_last_read, Req, State);
+        {error, _} ->
+            error_response(operation_failed, Req, State)
+    end.
+
+handle_last_read_put(Req=#{
+    chat_id := ChatId,
+    user_id := UserId,
+    json_data := #{<<"message_id">> := MessageId}
+}, State) ->
+    case eschat_db_messages:update_last_read(ChatId, UserId, MessageId) of
         ok -> 
             success_response(#{}, Req, State);
-        {error, not_owner} -> 
-            error_response(not_owner, Req, State);
-        {error, not_found} -> 
-            error_response(chat_not_found, Req, State);
         {error, _} -> 
             error_response(operation_failed, Req, State)
     end;
-handle_update_name(_, _, _, Req, State) ->
+handle_last_read_put(Req, State) ->
     error_response(invalid_format, Req, State).
-
-handle_last_read(<<"GET">>, ChatId, UserId, Req, State) ->
-    case eschat_db_messages:get_last_read(ChatId, UserId) of
-        {ok, MessageId} -> 
-            success_response(#{message_id => MessageId}, Req, State);
-        {error, not_found} -> 
-            error_response(no_last_read, Req, State);
-        {error, _} -> 
-            error_response(operation_failed, Req, State)
-    end;
-
-handle_last_read(<<"PUT">>, ChatId, UserId, Req, State) ->
-    with_body(fun(Body, Req1) ->
-        case Body of
-            #{<<"message_id">> := MessageId} ->
-                case eschat_db_messages:update_last_read(ChatId, UserId, MessageId) of
-                    ok -> 
-                        success_response(#{}, Req1, State);
-                    {error, _} -> 
-                        error_response(operation_failed, Req1, State)
-                end;
-            _ -> 
-                error_response(invalid_format, Req1, State)
-        end
-    end, Req).
-
-%% Middleware
-with_auth(Handler, Req, State) ->
-    case check_auth(Req) of
-        {ok, UserId} -> Handler(UserId, Req, State);
-        {error, Reason} -> error_response(Reason, Req, State)
-    end.
-
-with_auth_and_body(Handler, Req, State) ->
-    with_auth(fun(UserId, Req1, State1) ->
-        with_body(fun(Body, Req2) ->
-            Handler(UserId, Body, Req2, State1)
-        end, Req1)
-    end, Req, State).
-
-with_body(Handler, Req) ->
-    case read_body(Req) of
-        {ok, Body, Req1} -> Handler(Body, Req1);
-        {error, Reason} -> error_response(Reason, Req, undefined)
-    end.
-
-%% Helpers
-read_body(Req) ->
-    case cowboy_req:read_body(Req) of
-        {ok, Data, Req1} ->
-            case eschat_json:decode(Data) of
-                Map when is_map(Map) -> {ok, Map, Req1};
-                _ -> {error, invalid_format}
-            end;
-        Error -> Error
-    end.
-
-check_auth(Req) ->
-    case cowboy_req:header(<<"authorization">>, Req) of
-        undefined -> 
-            {error, no_session};
-        SessionId ->
-            case eschat_db_sessions:get_session_by_id(SessionId) of
-                {ok, UserId} -> {ok, UserId};
-                {error, _} -> {error, invalid_session}
-            end
-    end.

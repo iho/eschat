@@ -6,9 +6,9 @@
 -export([get_user_by_id/1]).
 
 create_user(Login, Pass) ->
-    Fun = fun(ConnPid) ->
+    Fun = fun(Pid) ->
              Query = "INSERT INTO users (login, pass) VALUES ($1, $2) RETURNING id",
-             case epgsql:equery(ConnPid, Query, [Login, Pass]) of
+             case epgsql:equery(Pid, Query, [Login, Pass]) of
                  {ok, 1, _, [{Id}]} ->
                      #user{id = Id,
                            login = Login,
