@@ -46,9 +46,7 @@ apply_middleware([Middleware | Rest], Handler, Req, State) ->
                State).
 
 %% Handlers
-handle_register(Req, State) ->
-    #{json_data := JSONData} = Req,
-    #{<<"login">> := Login, <<"password">> := Password} = JSONData,
+handle_register(#{json_data := #{<<"login">> := Login, <<"password">> := Password}} =Req, State) ->
     case eschat_db_users:create_user(Login, Password) of
         {ok, UserId} ->
             create_session_and_respond(UserId, Req, State);
@@ -58,9 +56,7 @@ handle_register(Req, State) ->
             error_response(registration_failed, Req, State)
     end.
 
-handle_login(Req, State) ->
-    #{json_data := JSONData} = Req,
-    #{<<"login">> := Login, <<"password">> := Password} = JSONData,
+handle_login(#{json_data := #{<<"login">> := Login, <<"password">> := Password} } = Req, State) ->
     case eschat_db_users:get_user_by_cred(Login, Password) of
         {ok, UserId} ->
             create_session_and_respond(UserId, Req, State);
@@ -70,8 +66,7 @@ handle_login(Req, State) ->
             error_response(login_failed, Req, State)
     end.
 
-handle_sessions(Req, State) ->
-    #{user_id := UserId} = Req,
+handle_sessions(#{user_id := UserId} = Req, State) ->
     case eschat_db_sessions:get_sessions(UserId) of
         {ok, Sessions} ->
             success_response(#{sessions => Sessions}, Req, State);
@@ -79,8 +74,7 @@ handle_sessions(Req, State) ->
             error_response(fetch_failed, Req, State)
     end.
 
-handle_session(Req, State) ->
-    #{user_id := UserId} = Req,
+handle_session(#{user_id := UserId} = Req, State) ->
     case eschat_db_users:get_user_by_id(UserId) of
         {ok, #user{id = Id, login = Login}} ->
             success_response(#{sessions => #{id => Id, login => Login}}, Req, State);
