@@ -26,121 +26,125 @@ init(Req0, State) ->
   handle_request(Method, Vsn, Action, Req0, State).
 
 handle_request(<<"POST">>, <<"v1">>, <<"register">>, Req0, State) ->
-  {ok, Body, Req1} = cowboy_req:read_body(Req0),
-  Data = eschat_json:decode(Body),
-  lager:debug("Data: ~p~n", [Data]),
-  case Data of
-    #{<<"login">> := Login, <<"password">> := Password} ->
-      case eschat_db_users:create_user(Login, Password) of
-        {ok, UserId} ->
-          {ok, SessionId} = eschat_db_sessions:create_session(UserId, 3600),
-          Response =
-            #{status => <<"success">>,
-              user_id => UserId,
-              session_id => SessionId},
-          reply(200, Response, Req1, State);
-        {error, user_exists} ->
-          reply(409, #{status => <<"error">>, message => <<"User already exists">>}, Req1, State);
-        {error, _} ->
-          reply(500, #{status => <<"error">>, message => <<"Registration failed">>}, Req1, State)
-      end;
-    _ ->
-      reply(400, #{status => <<"error">>, message => <<"Invalid request format">>}, Req1, State)
-  end;
+    with_json_body(fun handle_register/3, Req0, State);
+
 handle_request(<<"POST">>, <<"v1">>, <<"login">>, Req0, State) ->
-  {ok, Body, Req1} = cowboy_req:read_body(Req0),
-  case eschat_json:decode(Body) of
-    #{<<"login">> := Login, <<"password">> := Password} ->
-      case eschat_db_users:get_user_by_cred(Login, Password) of
-        {ok, UserId} ->
-          {ok, SessionId} = eschat_db_sessions:create_session(UserId, 3600),
-          Response =
-            #{status => <<"success">>,
-              user_id => UserId,
-              session_id => SessionId},
-          reply(200, Response, Req1, State);
-        {error, invalid_credentials} ->
-          reply(401, #{status => <<"error">>, message => <<"Invalid credentials">>}, Req1, State);
-        {error, _} ->
-          reply(500, #{status => <<"error">>, message => <<"Login failed">>}, Req1, State)
-      end;
-    _ ->
-      reply(400, #{status => <<"error">>, message => <<"Invalid request format">>}, Req1, State)
-  end;
-handle_request(<<"GET">>, <<"v1">>, <<"sessions">>, Req0, State) ->
-  case cowboy_req:header(<<"authorization">>, Req0) of
-    undefined ->
-      reply(401, #{status => <<"error">>, message => <<"No session provided">>}, Req0, State);
-    SessionId ->
-      lager:debug("SessionId: ~p~n", [SessionId]),
-      case eschat_db_sessions:get_session_by_id(SessionId) of
-        {ok, UserId} ->
-          {ok, Sessions} = eschat_db_sessions:get_sessions(UserId),
-          Response = #{status => <<"success">>, sessions => Sessions},
-          reply(200, Response, Req0, State);
-        {error, _} ->
-          reply(401, #{status => <<"error">>, message => <<"Invalid session">>}, Req0, State)
-      end
-  end;
+    with_json_body(fun handle_login/3, Req0, State);
+
+handle_request(<<"GET">>, <<"v1">>, <<"sessions">>, Req, State) ->
+    with_session(fun handle_sessions/3, Req, State);
+
 handle_request(<<"GET">>, <<"v1">>, <<"session">>, Req, State) ->
-    with_session(Req, State);
+    with_session(fun handle_session/3, Req, State);
 
-handle_request(_, _, _, Req0, State) ->
-  reply(404, #{status => <<"error">>, message => <<"Not found">>}, Req0, State).
+handle_request(_, _, _, Req, State) ->
+    error_response(not_found, Req, State).
 
-reply(Status, Response, Req, State) ->
-  Req1 =
-    cowboy_req:reply(Status,
-                     #{<<"content-type">> => <<"application/json">>},
-                     eschat_json:encode(Response),
-                     Req),
-  {ok, Req1, State}.
+%% Body parsing middleware
+with_json_body(Handler, Req0, State) ->
+    case read_body(Req0) of
+        {ok, Data, Req1} -> Handler(Data, Req1, State);
+        {error, Reason} -> error_response(Reason, Req0, State)
+    end.
 
+read_body(Req0) ->
+    case cowboy_req:read_body(Req0) of
+        {ok, Body, Req1} ->
+            case eschat_json:decode(Body) of
+                #{<<"login">> := _, <<"password">> := _} = Data -> 
+                    {ok, Data, Req1};
+                _ -> 
+                    {error, invalid_request}
+            end;
+        Error -> Error
+    end.
 
-with_session(Req, State) ->
+%% Session middleware
+with_session(Handler, Req, State) ->
     case cowboy_req:header(<<"authorization">>, Req) of
         undefined -> 
             error_response(no_session, Req, State);
         SessionId -> 
-            handle_auth(SessionId, Req, State)
+            case validate_session(SessionId) of
+                {ok, UserId} -> Handler(UserId, Req, State);
+                {error, Reason} -> error_response(Reason, Req, State)
+            end
     end.
 
-handle_auth(SessionId, Req, State) ->
-    lager:debug("SessionId: ~p~n", [SessionId]),
-    case authenticate(SessionId) of
-        {ok, UserData} -> success_response(UserData, Req, State);
-        {error, Reason} -> error_response(Reason, Req, State)
+%% Handlers
+handle_register(#{<<"login">> := Login, <<"password">> := Password}, Req, State) ->
+    case eschat_db_users:create_user(Login, Password) of
+        {ok, UserId} ->
+            create_session_and_respond(UserId, Req, State);
+        {error, user_exists} ->
+            error_response(user_exists, Req, State);
+        {error, _} ->
+            error_response(registration_failed, Req, State)
     end.
 
-authenticate(SessionId) ->
-    with_user_id(eschat_db_sessions:get_session_by_id(SessionId)).
+handle_login(#{<<"login">> := Login, <<"password">> := Password}, Req, State) ->
+    case eschat_db_users:get_user_by_cred(Login, Password) of
+        {ok, UserId} ->
+            create_session_and_respond(UserId, Req, State);
+        {error, invalid_credentials} ->
+            error_response(invalid_credentials, Req, State);
+        {error, _} ->
+            error_response(login_failed, Req, State)
+    end.
 
-with_user_id({ok, UserId}) ->
-    with_user(eschat_db_users:get_user_by_id(UserId));
-with_user_id({error, _}) ->
-    {error, invalid_session}.
+handle_sessions(UserId, Req, State) ->
+    case eschat_db_sessions:get_sessions(UserId) of
+        {ok, Sessions} -> 
+            success_response(#{sessions => Sessions}, Req, State);
+        {error, _} -> 
+            error_response(fetch_failed, Req, State)
+    end.
 
-with_user({ok, #user{id = Id, login = Login}}) ->
-    {ok, #{
-        id => Id,
-        login => Login
-    }};
-with_user({error, _}) ->
-    {error, invalid_session}.
+handle_session(UserId, Req, State) ->
+    case eschat_db_users:get_user_by_id(UserId) of
+        {ok, #user{id = Id, login = Login}} ->
+            success_response(#{sessions => #{id => Id, login => Login}}, Req, State);
+        {error, _} ->
+            error_response(fetch_failed, Req, State)
+    end.
 
+%% Helper functions
+validate_session(SessionId) ->
+    eschat_db_sessions:get_session_by_id(SessionId).
+
+create_session_and_respond(UserId, Req, State) ->
+    case eschat_db_sessions:create_session(UserId, 3600) of
+        {ok, SessionId} ->
+            success_response(#{
+                user_id => UserId,
+                session_id => SessionId
+            }, Req, State);
+        {error, _} ->
+            error_response(session_creation_failed, Req, State)
+    end.
+
+%% Response formatters
 success_response(Data, Req, State) ->
-    reply(200, #{
-        status => <<"success">>,
-        sessions => Data
-    }, Req, State).
+    reply(200, Data#{status => <<"success">>}, Req, State).
 
+error_response(invalid_request, Req, State) ->
+    reply(400, #{status => <<"error">>, message => <<"Invalid request format">>}, Req, State);
 error_response(no_session, Req, State) ->
-    reply(401, #{
-        status => <<"error">>,
-        message => <<"No session provided">>
-    }, Req, State);
+    reply(401, #{status => <<"error">>, message => <<"No session provided">>}, Req, State);
 error_response(invalid_session, Req, State) ->
-    reply(401, #{
-        status => <<"error">>,
-        message => <<"Invalid session">>
-    }, Req, State).
+    reply(401, #{status => <<"error">>, message => <<"Invalid session">>}, Req, State);
+error_response(invalid_credentials, Req, State) ->
+    reply(401, #{status => <<"error">>, message => <<"Invalid credentials">>}, Req, State);
+error_response(user_exists, Req, State) ->
+    reply(409, #{status => <<"error">>, message => <<"User already exists">>}, Req, State);
+error_response(not_found, Req, State) ->
+    reply(404, #{status => <<"error">>, message => <<"Not found">>}, Req, State);
+error_response(_, Req, State) ->
+    reply(500, #{status => <<"error">>, message => <<"Internal server error">>}, Req, State).
+
+reply(Status, Response, Req, State) ->
+    Req1 = cowboy_req:reply(Status,
+        #{<<"content-type">> => <<"application/json">>},
+        eschat_json:encode(Response),
+        Req),
+    {ok, Req1, State}.
