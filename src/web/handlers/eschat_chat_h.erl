@@ -14,35 +14,35 @@
 -define(ROUTES,
     #{{<<"v1">>, <<"POST">>, undefined, undefined} =>
         #{handler => fun handle_create_chat/2,
-          middleware => [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]},
+          middlewares => [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]},
       
       {<<"v1">>, <<"GET">>, '_', undefined} =>
         #{handler => fun handle_get_members/2,
-          middleware => [fun eschat_webutils:with_session/3]},
+          middlewares => [fun eschat_webutils:with_session/3]},
       
       {<<"v1">>, <<"DELETE">>, '_', undefined} =>
         #{handler => fun handle_delete_chat/2,
-          middleware => [fun eschat_webutils:with_session/3]},
+          middlewares => [fun eschat_webutils:with_session/3]},
       
       {<<"v1">>, <<"POST">>, <<"add_member">>, '_'} =>
         #{handler => fun handle_add_member/2,
-          middleware => [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]},
+          middlewares => [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]},
       
       {<<"v1">>, <<"POST">>, <<"remove_member">>, '_'} =>
         #{handler => fun handle_remove_member/2,
-          middleware => [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]},
+          middlewares => [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]},
       
       {<<"v1">>, <<"POST">>, <<"update_name">>, '_'} =>
         #{handler => fun handle_update_name/2,
-          middleware => [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]},
+          middlewares => [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]},
       
       {<<"v1">>, <<"GET">>, <<"last_read">>, '_'} =>
         #{handler => fun handle_last_read_get/2,
-          middleware => [fun eschat_webutils:with_session/3]},
+          middlewares => [fun eschat_webutils:with_session/3]},
       
       {<<"v1">>, <<"PUT">>, <<"last_read">>, '_'} =>
         #{handler => fun handle_last_read_put/2,
-          middleware => [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]}
+          middlewares => [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]}
     }).
 
 init(Req0, State) ->
@@ -54,7 +54,7 @@ init(Req0, State) ->
 
 handle_request(Vsn, Method, Action, ChatId, Req, State) ->
     case maps:find({Vsn, Method, Action, ChatId}, ?ROUTES) of
-        {ok, #{handler := Handler, middleware := Middlewares}} ->
+        {ok, #{handler := Handler, middlewares := Middlewares}} ->
             apply_middleware(Middlewares, Handler, Req#{chat_id => ChatId}, State);
         error ->
             error_response(not_found, Req, State)
