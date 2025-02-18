@@ -3,8 +3,9 @@
 -include("eschat_chat_h.hrl").
 -include("eschat_user_h.hrl").
 
--export([create_chat/2, add_member/3, remove_member/3, update_name/3, delete_chat/2,
-         get_chat_by_id/1, get_user_by_login/1, is_owner/2, get_user_chats/1, get_chat_members/1]).
+-export([get_chat/1, create_chat/2, add_member/3, remove_member/3, update_name/3,
+         delete_chat/2, get_chat_by_id/1, get_user_by_login/1, is_owner/2, get_user_chats/1,
+         get_chat_members/1]).
 
 create_chat(Name, OwnerId) ->
     Fun = fun(Connection) ->
@@ -102,13 +103,20 @@ remove_member(ChatId, UserId, RequesterId) ->
     end.
 
 update_name(ChatId, NewName, RequesterId) ->
-    case eschat_chatmembers_cache:is_owner(ChatId, RequesterId) of
+    ChatIdInt =
+        case is_binary(ChatId) of
+            true ->
+                binary_to_integer(ChatId);
+            false ->
+                ChatId
+        end,
+    case is_owner(ChatId, RequesterId) of
         true ->
             Fun = fun(Connection) ->
                      Query = "UPDATE chats SET name = $1 WHERE id = $2",
-                     case epgsql:equery(Connection, Query, [NewName, ChatId]) of
+                     case epgsql:equery(Connection, Query, [NewName, ChatIdInt]) of
                          {ok, 1} ->
-                             eschat_chats_cache:update_name(ChatId, NewName),
+                             %  eschat_chats_cache:update_name(ChatId, NewName),
                              ok;
                          {ok, 0} -> {error, not_found};
                          Error -> Error
@@ -297,9 +305,32 @@ get_chat_members(ChatId) ->
             {ok, Members}
     end.
 
-    format_members(Members) ->
-        lists:map(fun({Id, Login}) ->
-                     #{id => Id,
-                       login => Login}
-                  end,
-                  Members).
+format_members(Members) ->
+    lists:map(fun({Id, Login}) -> #{id => Id, login => Login} end, Members).
+
+get_chat(ChatId) ->
+    ChatIdInt =
+        case is_binary(ChatId) of
+            true ->
+                binary_to_integer(ChatId);
+            false ->
+                ChatId
+        end,
+    Fun = fun(Connection) ->
+             Query = "SELECT id, name, creator_id FROM chats WHERE id = $1",
+             case epgsql:equery(Connection, Query, [ChatIdInt]) of
+                 {ok, _, [{Id, Name, OwnerId}]} ->
+                     %  eschat_users_cache:put(Id, #{login => Login}),
+                     {ok,
+                      #{id => Id,
+                        name => Name,
+                        owner_id => OwnerId}};
+                 {ok, _, []} -> {error, user_not_found};
+                 Error -> Error
+             end
+          end,
+
+    case sherlock:transaction(database, Fun) of
+        {ok, Members} ->
+            {ok, Members}
+    end.

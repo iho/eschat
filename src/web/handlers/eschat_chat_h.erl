@@ -9,7 +9,11 @@
 
 %% /api/:vsn/chat/:action/:id"
 -define(ROUTES,
-        #{{<<"v1">>, <<"POST">>, undefined} =>
+        #{{<<"v1">>, <<"GET">>, undefined} =>
+              #{handler => fun handle_get_chat/2,
+                middlewares =>
+                    [fun eschat_webutils:with_session/3]},
+          {<<"v1">>, <<"POST">>, undefined} =>
               #{handler => fun handle_create_chat/2,
                 middlewares =>
                     [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]},
@@ -27,7 +31,7 @@
               #{handler => fun handle_remove_member/2,
                 middlewares =>
                     [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]},
-          {<<"v1">>, <<"POST">>, <<"update_name">>} =>
+          {<<"v1">>, <<"PUT">>, <<"update_name">>} =>
               #{handler => fun handle_update_name/2,
                 middlewares =>
                     [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]},
@@ -179,3 +183,15 @@ handle_last_read_put(Req = #{chat_id := ChatId,
     end;
 handle_last_read_put(Req, State) ->
     eschat_webutils:error_response(invalid_format, Req, State).
+
+
+handle_get_chat(Req = #{chat_id := ChatId}, State) ->
+    case eschat_db_chats:get_chat(ChatId) of
+        {ok, Chat} ->
+            lager:debug("Chat: ~p~n", [Chat]),  
+            eschat_webutils:success_response(#{chat=>Chat}, Req, State);
+        {error, not_found} ->
+            eschat_webutils:error_response(chat_not_found, Req, State);
+        {error, _} ->
+            eschat_webutils:error_response(operation_failed, Req, State)
+    end.
