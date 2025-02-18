@@ -7,35 +7,35 @@
 
 %% /api/:vsn/chat/:action/:id"
 -define(ROUTES,
-    #{{<<"v1">>, <<"POST">>, undefined, undefined} =>
+    #{{<<"v1">>, <<"POST">>, undefined} =>
         #{handler => fun handle_create_chat/2,
           middlewares => [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]},
       
-      {<<"v1">>, <<"GET">>, '_', undefined} =>
+      {<<"v1">>, <<"GET">>, '_'} =>
         #{handler => fun handle_get_members/2,
           middlewares => [fun eschat_webutils:with_session/3]},
       
-      {<<"v1">>, <<"DELETE">>, '_', undefined} =>
+      {<<"v1">>, <<"DELETE">>, undefined} =>
         #{handler => fun handle_delete_chat/2,
           middlewares => [fun eschat_webutils:with_session/3]},
       
-      {<<"v1">>, <<"POST">>, <<"add_member">>, '_'} =>
+      {<<"v1">>, <<"POST">>, <<"add_member">>} =>
         #{handler => fun handle_add_member/2,
           middlewares => [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]},
       
-      {<<"v1">>, <<"POST">>, <<"remove_member">>, '_'} =>
+      {<<"v1">>, <<"POST">>, <<"remove_member">>} =>
         #{handler => fun handle_remove_member/2,
           middlewares => [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]},
       
-      {<<"v1">>, <<"POST">>, <<"update_name">>, '_'} =>
+      {<<"v1">>, <<"POST">>, <<"update_name">>} =>
         #{handler => fun handle_update_name/2,
           middlewares => [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]},
       
-      {<<"v1">>, <<"GET">>, <<"last_read">>, '_'} =>
+      {<<"v1">>, <<"GET">>, <<"last_read">>} =>
         #{handler => fun handle_last_read_get/2,
           middlewares => [fun eschat_webutils:with_session/3]},
       
-      {<<"v1">>, <<"PUT">>, <<"last_read">>, '_'} =>
+      {<<"v1">>, <<"PUT">>, <<"last_read">>} =>
         #{handler => fun handle_last_read_put/2,
           middlewares => [fun eschat_webutils:with_session/3, fun eschat_webutils:with_json_body/3]}
     }).
@@ -48,7 +48,11 @@ init(Req0, State) ->
     handle_request(Vsn, Method, Action, ChatId, Req0, State).
 
 handle_request(Vsn, Method, Action, ChatId, Req, State) ->
-    case maps:find({Vsn, Method, Action, ChatId}, ?ROUTES) of
+    lager:debug("Vsn: ~p~n", [Vsn]),
+    lager:debug("Method: ~p~n", [Method]),
+    lager:debug("Action: ~p~n", [Action]),
+    lager:debug("Chat ID: ~p~n", [ChatId]),
+    case maps:find({Vsn, Method, Action}, ?ROUTES) of
         {ok, #{handler := Handler, middlewares := Middlewares}} ->
             apply_middleware(Middlewares, Handler, Req#{chat_id => ChatId}, State);
         error ->
@@ -65,7 +69,6 @@ apply_middleware([Middleware | Rest], Handler, Req, State) ->
         State
     ).
 
-%% Handler implementations remain the same as in your original code
 handle_create_chat(Req=#{user_id := UserId, json_data := #{<<"name">> := Name}}, State) ->
     lager:debug("Creating chat with name ~p~n", [Name]),
     lager:debug("User ID: ~p~n", [UserId]),
@@ -89,6 +92,8 @@ handle_get_members(Req=#{chat_id := ChatId}, State) ->
     end.
 
 handle_delete_chat(Req=#{chat_id := ChatId, user_id := UserId}, State) ->
+    lager:debug("Deleting chat ~p~n", [ChatId]),
+    lager:debug("User ID: ~p~n", [UserId]),
     case eschat_db_chats:delete_chat(ChatId, UserId) of
         ok ->
            eschat_webutils:success_response(#{}, Req, State);

@@ -1,13 +1,16 @@
 -module(eschat_db_chats).
 
 -include("eschat_chat_h.hrl").
+-include("eschat_user_h.hrl").
 
 -export([create_chat/2, add_member/3, remove_member/3, update_name/3, delete_chat/2,
-         get_chat_by_id/1, get_user_by_login/1]).
+         get_chat_by_id/1, get_user_by_login/1, is_owner/2]).
 
 create_chat(Name, OwnerId) ->
     Fun = fun(Connection) ->
-             Query = "INSERT INTO chats (name, created_at, creator_id) VALUES ($1, NOW(), $2) RETURNING id",
+             Query =
+                 "INSERT INTO chats (name, created_at, creator_id) VALUES ($1, "
+                 "NOW(), $2) RETURNING id",
              Result = epgsql:equery(Connection, Query, [Name, OwnerId]),
              lager:info("Chat creation result: ~p", [Result]),
              case Result of
@@ -27,7 +30,7 @@ create_chat(Name, OwnerId) ->
           end,
 
     case sherlock:transaction(database, Fun) of
-        #chat{id = ChatId}  ->
+        #chat{id = ChatId} ->
             eschat_chats_cache:put(ChatId, #{name => Name, owner_id => OwnerId}),
             eschat_chatmembers_cache:put(ChatId, OwnerId, true),
             {ok, ChatId};
@@ -36,17 +39,27 @@ create_chat(Name, OwnerId) ->
     end.
 
 add_member(ChatId, UserLogin, RequesterId) ->
-    case eschat_chatmembers_cache:is_owner(ChatId, RequesterId) of
+
+    % Convert ChatId to integer if it's binary
+    ChatIdInt =
+        case is_binary(ChatId) of
+            true ->
+                binary_to_integer(ChatId);
+            false ->
+                ChatId
+        end,
+    case eschat_db_chats:is_owner(ChatId, RequesterId) of
         true ->
-            case eschat_users_cache:get_by_login(UserLogin) of
-                {ok, UserId} ->
+            case eschat_db_users:get_user_by_login(UserLogin) of
+                {ok, Rec} ->
                     Fun = fun(Connection) ->
+                             UserId = Rec#user.id,
                              MemberQuery =
                                  "INSERT INTO chat_members (chat_id, user_id, is_owner) VALUES "
                                  "($1, $2, false)",
-                             case epgsql:equery(Connection, MemberQuery, [ChatId, UserId]) of
+                             case epgsql:equery(Connection, MemberQuery, [ChatIdInt, UserId]) of
                                  {ok, 1} ->
-                                     eschat_chatmembers_cache:put(ChatId, UserId, false),
+                                    %  eschat_chatmembers_cache:put(ChatId, UserId, false),
                                      {ok, added};
                                  {error, {error, error, _, unique_violation, _, _}} ->
                                      {error, already_member};
@@ -100,14 +113,23 @@ update_name(ChatId, NewName, RequesterId) ->
     end.
 
 delete_chat(ChatId, RequesterId) ->
-    case eschat_chatmembers_cache:is_owner(ChatId, RequesterId) of
+    Result = is_owner(ChatId, RequesterId),
+    lager:debug("is_owner result: ~p", [Result]),
+    ChatIdInt =
+        case is_binary(ChatId) of
+            true ->
+                binary_to_integer(ChatId);
+            false ->
+                ChatId
+        end,
+
+    case Result of
         true ->
             Fun = fun(Connection) ->
                      Query = "DELETE FROM chats WHERE id = $1",
-                     case epgsql:equery(Connection, Query, [ChatId]) of
+                     case epgsql:equery(Connection, Query, [ChatIdInt]) of
                          {ok, 1} ->
-                             eschat_chats_cache:remove(ChatId),
-                             eschat_chatmembers_cache:remove_chat(ChatId),
+                             eschat_chats_cache:remove(ChatIdInt),
                              ok;
                          {ok, 0} -> {error, not_found};
                          Error -> Error
@@ -164,20 +186,41 @@ get_user_by_login(Login) ->
             sherlock:transaction(database, Fun)
     end.
 
-
 is_owner(ChatId, UserId) ->
-   Result = eschat_chatmembers_cache:is_owner(ChatId, UserId),
+    lager:debug("Checking if ~p is owner of chat ~p", [UserId, ChatId]),
 
-   Fun = fun(Connection) ->
-            Query = "SELECT is_owner FROM chat_members WHERE chat_id = $1 AND user_id = $2",
-            case epgsql:equery(Connection, Query, [ChatId, UserId]) of
-                {ok, _, [{IsOwner}]} ->
-                    {ok, IsOwner};
-                {ok, _, []} -> {error, not_found};
-                Error -> Error
-            end
-         end,
-         
+    % Convert ChatId to integer if it's binary
+    ChatIdInt =
+        case is_binary(ChatId) of
+            true ->
+                binary_to_integer(ChatId);
+            false ->
+                ChatId
+        end,
+
+    % Convert UserId to integer if it's binary
+    UserIdInt =
+        case is_binary(UserId) of
+            true ->
+                binary_to_integer(UserId);
+            false ->
+                UserId
+        end,
+
+    lager:debug("ChatIdInt: ~p", [ChatIdInt]),
+    lager:debug("UserIdInt: ~p", [UserIdInt]),
+
+    Fun = fun(Connection) ->
+             Query =
+                 "SELECT is_owner FROM chat_members WHERE chat_id = $1 AND user_id "
+                 "= $2",
+             case epgsql:equery(Connection, Query, [ChatIdInt, UserIdInt]) of
+                 {ok, _, [{IsOwner}]} -> {ok, IsOwner};
+                 {ok, _, []} -> {error, not_found};
+                 Error -> Error
+             end
+          end,
+
     case sherlock:transaction(database, Fun) of
         {ok, true} ->
             true;

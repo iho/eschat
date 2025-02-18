@@ -71,8 +71,18 @@ init([]) ->
     modules => dynamic
   },
 
+  % eschat_chatmembers_cache
+  Eschat_chatmembers_cacheChild = #{
+    id => 'eschat_chatmembers_cache',
+    start => {'eschat_chatmembers_cache', start_link, []},
+    restart => permanent,
+    shutdown => 2000,
+    type => worker,
+    modules => dynamic
+  },
 
-  {ok, {SupFlags, [AChild, BChild, CChild]}}.
+
+  {ok, {SupFlags, [AChild, BChild, CChild, Eschat_chatmembers_cacheChild]}}.
 
 %%%===================================================================
 %%% Internal functions
