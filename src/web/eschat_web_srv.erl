@@ -113,6 +113,7 @@ restart() ->
     [{'_',
       [{"/api/:vsn/user/:action", eschat_user_h, []},
        {"/api/:vsn/chat", eschat_chat_h, []},
+       {"/api/:vsn/chats/", eschat_chats_h, []},
        {"/api/:vsn/chat/:id", eschat_chat_h, []},
        {"/api/:vsn/chat/:action/:id", eschat_chat_h, []},
       %  {"/api/:vsn/session[/:id]", eschat_session_h, []},

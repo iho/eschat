@@ -4,7 +4,7 @@
 -include("eschat_user_h.hrl").
 
 -export([create_chat/2, add_member/3, remove_member/3, update_name/3, delete_chat/2,
-         get_chat_by_id/1, get_user_by_login/1, is_owner/2]).
+         get_chat_by_id/1, get_user_by_login/1, is_owner/2, get_user_chats/1, get_chat_members/1]).
 
 create_chat(Name, OwnerId) ->
     Fun = fun(Connection) ->
@@ -39,7 +39,6 @@ create_chat(Name, OwnerId) ->
     end.
 
 add_member(ChatId, UserLogin, RequesterId) ->
-
     % Convert ChatId to integer if it's binary
     ChatIdInt =
         case is_binary(ChatId) of
@@ -59,7 +58,7 @@ add_member(ChatId, UserLogin, RequesterId) ->
                                  "($1, $2, false)",
                              case epgsql:equery(Connection, MemberQuery, [ChatIdInt, UserId]) of
                                  {ok, 1} ->
-                                    %  eschat_chatmembers_cache:put(ChatId, UserId, false),
+                                     %  eschat_chatmembers_cache:put(ChatId, UserId, false),
                                      {ok, added};
                                  {error, {error, error, _, unique_violation, _, _}} ->
                                      {error, already_member};
@@ -75,15 +74,23 @@ add_member(ChatId, UserLogin, RequesterId) ->
     end.
 
 remove_member(ChatId, UserId, RequesterId) ->
-    case eschat_chatmembers_cache:is_owner(ChatId, RequesterId) of
+    % Convert ChatId to integer if it's binary
+    ChatIdInt =
+        case is_binary(ChatId) of
+            true ->
+                binary_to_integer(ChatId);
+            false ->
+                ChatId
+        end,
+    case is_owner(ChatId, RequesterId) of
         true ->
             Fun = fun(Connection) ->
                      Query =
                          "DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2 "
                          "AND NOT is_owner",
-                     case epgsql:equery(Connection, Query, [ChatId, UserId]) of
+                     case epgsql:equery(Connection, Query, [ChatIdInt, UserId]) of
                          {ok, 1} ->
-                             eschat_chatmembers_cache:remove_member(ChatId, UserId),
+                             %  eschat_chatmembers_cache:remove_member(ChatId, UserId),
                              ok;
                          {ok, 0} -> {error, not_found};
                          Error -> Error
@@ -159,7 +166,7 @@ get_chat_by_id(ChatId) ->
                                  #chat{id = ChatId,
                                        name = Name,
                                        owner_id = OwnerId},
-                             eschat_chats_cache:put(ChatId, #{name => Name, owner_id => OwnerId}),
+                             %  eschat_chats_cache:put(ChatId, #{name => Name, owner_id => OwnerId}),
                              {ok, Chat};
                          {ok, _, []} -> {error, not_found};
                          Error -> Error
@@ -177,7 +184,7 @@ get_user_by_login(Login) ->
                      Query = "SELECT id FROM users WHERE login = $1",
                      case epgsql:equery(Connection, Query, [Login]) of
                          {ok, _, [{Id}]} ->
-                             eschat_users_cache:put(Id, #{login => Login}),
+                             %  eschat_users_cache:put(Id, #{login => Login}),
                              {ok, Id};
                          {ok, _, []} -> {error, user_not_found};
                          Error -> Error
@@ -227,3 +234,72 @@ is_owner(ChatId, UserId) ->
         _ ->
             false
     end.
+
+get_user_chats(UserId) ->
+    % Query =
+    %     "SELECT DISTINCT c.* FROM chats c LEFT JOIN chat_members cm "
+    %     "ON c.id = cm.chat_id WHERE cm.owner_id = $1 OR cm.user_id = $1",
+    Query =
+        "SELECT DISTINCT c.* \nFROM chats c \nLEFT JOIN chat_members "
+        "cm ON c.id = cm.chat_id \nWHERE cm.user_id = $1",
+    UserIdInt =
+        case is_binary(UserId) of
+            true ->
+                binary_to_integer(UserId);
+            false ->
+                UserId
+        end,
+    Fun = fun(Connection) ->
+             case epgsql:equery(Connection, Query, [UserIdInt]) of
+                 {ok, _, Chats} -> {ok, format_chats(Chats)};
+                 {ok, _, []} -> {error, not_found};
+                 Error -> Error
+             end
+          end,
+
+    case sherlock:transaction(database, Fun) of
+        {ok, Chats} ->
+            {ok, Chats}
+    end.
+
+format_chats(Chats) ->
+    % {1,<<"chat111">>,{{2025,2,15},{17,33,45.421319}},1}
+    lists:map(fun({Id, Name, _CreatedAt, OwnerId}) ->
+                 #{id => Id,
+                   name => Name,
+                   owner_id => OwnerId}
+              end,
+              Chats).
+
+get_chat_members(ChatId) ->
+    % Convert ChatId to integer if it's binary
+    ChatIdInt =
+        case is_binary(ChatId) of
+            true ->
+                binary_to_integer(ChatId);
+            false ->
+                ChatId
+        end,
+
+    Fun = fun(Connection) ->
+             Query =
+                 "SELECT u.id, u.login FROM chat_members cm \nJOIN users u ON "
+                 "cm.user_id = u.id \nWHERE cm.chat_id = $1",
+             case epgsql:equery(Connection, Query, [ChatIdInt]) of
+                 {ok, _, Members} -> {ok, format_members(Members)};
+                 {ok, _, []} -> {error, not_found};
+                 Error -> Error
+             end
+          end,
+
+    case sherlock:transaction(database, Fun) of
+        {ok, Members} ->
+            {ok, Members}
+    end.
+
+    format_members(Members) ->
+        lists:map(fun({Id, Login}) ->
+                     #{id => Id,
+                       login => Login}
+                  end,
+                  Members).
