@@ -1,15 +1,7 @@
 -module(eschat_webutils).
 
--export([
-    reply/4,
-    error_response/3,
-    success_response/3,
-    read_body/1,
-    validate_session/1,
-    with_json_body/3,
-    with_session/3
-]).
-
+-export([reply/4, error_response/3, success_response/3, read_body/1, validate_session/1,
+         with_json_body/3, with_session/3]).
 
 -define(ERROR_RESPONSES,
         #{invalid_request => {400, <<"Invalid request format">>},
@@ -65,19 +57,18 @@ with_json_body(Next, Req0, State) ->
         {ok, Data, Req1} ->
             Next(Req1#{json_data => Data}, State);
         {error, Reason} ->
-            error_response(Reason, Req0, State)
+            eschat_webutils:error_response(Reason, Req0, State)
     end.
 
 with_session(Next, Req0, State) ->
     case cowboy_req:header(<<"authorization">>, Req0) of
         undefined ->
-            error_response(no_session, Req0, State);
+            eschat_webutils:error_response(no_session, Req0, State);
         SessionId ->
             case validate_session(SessionId) of
                 {ok, UserId} ->
                     Next(Req0#{user_id => UserId, session_id => SessionId}, State);
                 {error, Reason} ->
-                    error_response(Reason, Req0, State)
+                    eschat_webutils:error_response(Reason, Req0, State)
             end
     end.
-

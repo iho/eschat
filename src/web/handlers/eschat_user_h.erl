@@ -6,7 +6,6 @@
 
 -export([init/2]).
 
--import(eschat_webutils, [reply/4, error_response/3, success_response/3]).
 
 %% "/api/:vsn/user/:action[/:id]"
 
@@ -35,7 +34,7 @@ handle_request(Method, Version, Path, Req, State) ->
         {ok, #{handler := Handler, middlewares := Middlewares}} ->
             apply_middleware(Middlewares, Handler, Req, State);
         error ->
-            error_response(not_found, Req, State)
+           eschat_webutils:error_response(not_found, Req, State)
     end.
 
 apply_middleware([], Handler, Req, State) ->
@@ -51,9 +50,9 @@ handle_register(#{json_data := #{<<"login">> := Login, <<"password">> := Passwor
         {ok, UserId} ->
             create_session_and_respond(UserId, Req, State);
         {error, user_exists} ->
-            error_response(user_exists, Req, State);
+           eschat_webutils:error_response(user_exists, Req, State);
         {error, _} ->
-            error_response(registration_failed, Req, State)
+           eschat_webutils:error_response(registration_failed, Req, State)
     end.
 
 handle_login(#{json_data := #{<<"login">> := Login, <<"password">> := Password} } = Req, State) ->
@@ -61,31 +60,31 @@ handle_login(#{json_data := #{<<"login">> := Login, <<"password">> := Password} 
         {ok, UserId} ->
             create_session_and_respond(UserId, Req, State);
         {error, invalid_credentials} ->
-            error_response(invalid_credentials, Req, State);
+           eschat_webutils:error_response(invalid_credentials, Req, State);
         {error, _} ->
-            error_response(login_failed, Req, State)
+           eschat_webutils:error_response(login_failed, Req, State)
     end.
 
 handle_sessions(#{user_id := UserId} = Req, State) ->
     case eschat_db_sessions:get_sessions(UserId) of
         {ok, Sessions} ->
-            success_response(#{sessions => Sessions}, Req, State);
+           eschat_webutils:success_response(#{sessions => Sessions}, Req, State);
         {error, _} ->
-            error_response(fetch_failed, Req, State)
+           eschat_webutils:error_response(fetch_failed, Req, State)
     end.
 
 handle_session(#{user_id := UserId} = Req, State) ->
     case eschat_db_users:get_user_by_id(UserId) of
         {ok, #user{id = Id, login = Login}} ->
-            success_response(#{sessions => #{id => Id, login => Login}}, Req, State);
+            eschat_webutils:success_response(#{sessions => #{id => Id, login => Login}}, Req, State);
         {error, _} ->
-            error_response(fetch_failed, Req, State)
+           eschat_webutils:error_response(fetch_failed, Req, State)
     end.
 
 create_session_and_respond(UserId, Req, State) ->
     case eschat_db_sessions:create_session(UserId, 3600) of
         {ok, SessionId} ->
-            success_response(#{user_id => UserId, session_id => SessionId}, Req, State);
+            eschat_webutils:success_response(#{user_id => UserId, session_id => SessionId}, Req, State);
         {error, _} ->
-            error_response(session_creation_failed, Req, State)
+           eschat_webutils:error_response(session_creation_failed, Req, State)
     end.

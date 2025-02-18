@@ -5,11 +5,6 @@
 %% API
 -export([init/2]).
 
--import(eschat_webutils,
-        [reply/4,
-         error_response/3,
-         success_response/3]).
-
 %% /api/:vsn/chat/:action/:id"
 -define(ROUTES,
     #{{<<"v1">>, <<"POST">>, undefined, undefined} =>
@@ -57,7 +52,7 @@ handle_request(Vsn, Method, Action, ChatId, Req, State) ->
         {ok, #{handler := Handler, middlewares := Middlewares}} ->
             apply_middleware(Middlewares, Handler, Req#{chat_id => ChatId}, State);
         error ->
-            error_response(not_found, Req, State)
+           eschat_webutils:error_response(not_found, Req, State)
     end.
 
 %% Middleware application
@@ -77,32 +72,32 @@ handle_create_chat(Req=#{user_id := UserId, json_data := #{<<"name">> := Name}},
     lager:debug("Request: ~p~n", [Req]),
     case eschat_db_chats:create_chat(Name, UserId) of
         {ok, ChatId} -> 
-            success_response(#{chat_id => ChatId}, Req, State);
+            eschat_webutils:success_response(#{chat_id => ChatId}, Req, State);
         {error, _} -> 
-            error_response(create_failed, Req, State)
+            eschat_webutils:error_response(create_failed, Req, State)
     end;
 handle_create_chat(Req, State) ->
-    error_response(invalid_format, Req, State).
+    eschat_webutils:error_response(invalid_format, Req, State).
 handle_get_members(Req=#{chat_id := ChatId}, State) ->
     case eschat_db_chatmembers:get_members(ChatId) of
         {ok, Members} ->
-            success_response(#{members => Members}, Req, State);
+            eschat_webutils:success_response(#{members => Members}, Req, State);
         {error, not_found} ->
-            error_response(chat_not_found, Req, State);
+            eschat_webutils:error_response(chat_not_found, Req, State);
         {error, _} ->
-            error_response(operation_failed, Req, State)
+            eschat_webutils:error_response(operation_failed, Req, State)
     end.
 
 handle_delete_chat(Req=#{chat_id := ChatId, user_id := UserId}, State) ->
     case eschat_db_chats:delete_chat(ChatId, UserId) of
         ok ->
-            success_response(#{}, Req, State);
+           eschat_webutils:success_response(#{}, Req, State);
         {error, not_owner} ->
-            error_response(not_owner, Req, State);
+           eschat_webutils:error_response(not_owner, Req, State);
         {error, not_found} ->
-            error_response(chat_not_found, Req, State);
+           eschat_webutils:error_response(chat_not_found, Req, State);
         {error, _} ->
-            error_response(operation_failed, Req, State)
+           eschat_webutils:error_response(operation_failed, Req, State)
     end.
 
 handle_add_member(Req=#{
@@ -112,16 +107,16 @@ handle_add_member(Req=#{
 }, State) ->
     case eschat_db_chats:add_member(ChatId, UserLogin, UserId) of
         {ok, added} ->
-            success_response(#{}, Req, State);
+           eschat_webutils:success_response(#{}, Req, State);
         {error, not_owner} ->
-            error_response(not_owner, Req, State);
+           eschat_webutils:error_response(not_owner, Req, State);
         {error, already_member} ->
-            error_response(already_member, Req, State);
+           eschat_webutils:error_response(already_member, Req, State);
         {error, _} ->
-            error_response(operation_failed, Req, State)
+           eschat_webutils:error_response(operation_failed, Req, State)
     end;
 handle_add_member(Req, State) ->
-    error_response(invalid_format, Req, State).
+   eschat_webutils:error_response(invalid_format, Req, State).
 
 handle_remove_member(Req=#{
     chat_id := ChatId,
@@ -130,16 +125,16 @@ handle_remove_member(Req=#{
 }, State) ->
     case eschat_db_chats:remove_member(ChatId, MemberId, UserId) of
         ok ->
-            success_response(#{}, Req, State);
+           eschat_webutils:success_response(#{}, Req, State);
         {error, not_owner} ->
-            error_response(not_owner, Req, State);
+           eschat_webutils:error_response(not_owner, Req, State);
         {error, not_found} ->
-            error_response(member_not_found, Req, State);
+           eschat_webutils:error_response(member_not_found, Req, State);
         {error, _} ->
-            error_response(operation_failed, Req, State)
+           eschat_webutils:error_response(operation_failed, Req, State)
     end;
 handle_remove_member(Req, State) ->
-    error_response(invalid_format, Req, State).
+   eschat_webutils:error_response(invalid_format, Req, State).
 
 handle_update_name(Req=#{
     chat_id := ChatId,
@@ -148,25 +143,25 @@ handle_update_name(Req=#{
 }, State) ->
     case eschat_db_chats:update_name(ChatId, NewName, UserId) of
         ok ->
-            success_response(#{}, Req, State);
+           eschat_webutils:success_response(#{}, Req, State);
         {error, not_owner} ->
-            error_response(not_owner, Req, State);
+           eschat_webutils:error_response(not_owner, Req, State);
         {error, not_found} ->
-            error_response(chat_not_found, Req, State);
+           eschat_webutils:error_response(chat_not_found, Req, State);
         {error, _} ->
-            error_response(operation_failed, Req, State)
+           eschat_webutils:error_response(operation_failed, Req, State)
     end;
 handle_update_name(Req, State) ->
-    error_response(invalid_format, Req, State).
+   eschat_webutils:error_response(invalid_format, Req, State).
 
 handle_last_read_get(Req=#{chat_id := ChatId, user_id := UserId}, State) ->
     case eschat_db_messages:get_last_read(ChatId, UserId) of
         {ok, MessageId} ->
-            success_response(#{message_id => MessageId}, Req, State);
+           eschat_webutils:success_response(#{message_id => MessageId}, Req, State);
         {error, not_found} ->
-            error_response(no_last_read, Req, State);
+           eschat_webutils:error_response(no_last_read, Req, State);
         {error, _} ->
-            error_response(operation_failed, Req, State)
+           eschat_webutils:error_response(operation_failed, Req, State)
     end.
 
 handle_last_read_put(Req=#{
@@ -176,9 +171,9 @@ handle_last_read_put(Req=#{
 }, State) ->
     case eschat_db_messages:update_last_read(ChatId, UserId, MessageId) of
         ok -> 
-            success_response(#{}, Req, State);
+           eschat_webutils:success_response(#{}, Req, State);
         {error, _} -> 
-            error_response(operation_failed, Req, State)
+           eschat_webutils:error_response(operation_failed, Req, State)
     end;
 handle_last_read_put(Req, State) ->
-    error_response(invalid_format, Req, State).
+   eschat_webutils:error_response(invalid_format, Req, State).
