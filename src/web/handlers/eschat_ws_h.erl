@@ -77,13 +77,11 @@ handle_ws_message(#{<<"type">> := <<"send_message">>,
                   State) ->
     case sets:is_element(ChatId, State#state.active_chats) of
         true ->
-            ReplyFor = maps:get(<<"reply_for">>, Message, null),
-            case eschat_db:create_message(ChatId, State#state.user_id, Message, ReplyFor) of
-                {ok, MsgId, CreatedAt} ->
+            case eschat_db_messages:create_message(ChatId, State#state.user_id, Message) of
+                {ok, MsgId} ->
                     Response =
                         #{type => <<"message_sent">>,
-                          message_id => MsgId,
-                          created_at => CreatedAt},
+                          message_id => MsgId},
                     {reply, {text, eschat_json:encode(Response)}, State};
                 _ ->
                     Response = #{type => <<"error">>, message => <<"Failed to send message">>},

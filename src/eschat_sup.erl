@@ -9,7 +9,12 @@ start_link() ->
 
 init([]) ->
 	Procs = [
-		#{
+	    #{id => eschat_node_registry,
+          start => {eschat_node_registry, start_link, []},
+          restart => permanent,
+          shutdown => 5000,
+          type => worker}, 
+    	#{
 			id => eschat_db_sup,             % mandatory
 			start => {eschat_db_sup, start_link, []},            % mandatory
 			restart => permanent,         % optional

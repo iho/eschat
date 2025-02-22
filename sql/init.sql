@@ -49,7 +49,6 @@ CREATE TABLE chat_members (
     FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
 );
 
--- Create the "LastReadMsgInChat" table
 CREATE TABLE last_read_msg_in_chat (
     chat_id BIGINT NOT NULL,
     user_id BIGINT NOT NULL,
@@ -60,8 +59,10 @@ CREATE TABLE last_read_msg_in_chat (
     FOREIGN KEY (chat_message_id) REFERENCES chat_messages (id) ON DELETE CASCADE
 );
 
--- Create the "Node" table
-CREATE TABLE nodes (
-    id VARCHAR PRIMARY KEY,
-    last_update TIMESTAMP WITHOUT TIME ZONE NOT NULL
+CREATE TABLE IF NOT EXISTS nodes (
+    node_id text PRIMARY KEY,
+    host text NOT NULL,
+    web_port integer NOT NULL,
+    last_seen timestamp NOT NULL,
+    user_sessions jsonb DEFAULT '[]'
 );
