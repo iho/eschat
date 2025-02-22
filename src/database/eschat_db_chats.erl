@@ -3,9 +3,9 @@
 -include("eschat_chat_h.hrl").
 -include("eschat_user_h.hrl").
 
--export([get_chat/1, create_chat/2, add_member/3, remove_member/3, update_name/3,
-         delete_chat/2, get_chat_by_id/1, get_user_by_login/1, is_owner/2, get_user_chats/1,
-         get_chat_members/1]).
+-export([leave_chat/2, get_chat/1, create_chat/2, add_member/3, remove_member/3,
+         update_name/3, delete_chat/2, get_chat_by_id/1, get_user_by_login/1, is_owner/2,
+         get_user_chats/1, get_chat_members/1]).
 
 create_chat(Name, OwnerId) ->
     Fun = fun(Connection) ->
@@ -74,7 +74,7 @@ add_member(ChatId, UserLogin, RequesterId) ->
             {error, not_owner}
     end.
 
-remove_member(ChatId, UserId, RequesterId) ->
+leave_chat(ChatId, UserId) ->
     % Convert ChatId to integer if it's binary
     ChatIdInt =
         case is_binary(ChatId) of
@@ -83,23 +83,26 @@ remove_member(ChatId, UserId, RequesterId) ->
             false ->
                 ChatId
         end,
-    case is_owner(ChatId, RequesterId) of
-        true ->
-            Fun = fun(Connection) ->
-                     Query =
-                         "DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2 "
-                         "AND NOT is_owner",
-                     case epgsql:equery(Connection, Query, [ChatIdInt, UserId]) of
-                         {ok, 1} ->
-                             %  eschat_chatmembers_cache:remove_member(ChatId, UserId),
-                             ok;
-                         {ok, 0} -> {error, not_found};
-                         Error -> Error
-                     end
-                  end,
-            sherlock:transaction(database, Fun);
-        false ->
-            {error, not_owner}
+
+    Fun = fun(Connection) ->
+             Query =
+                 "DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2 "
+                 "AND NOT is_owner",
+             case epgsql:equery(Connection, Query, [ChatIdInt, UserId]) of
+                 {ok, 1} ->
+                     %  eschat_chatmembers_cache:remove_member(ChatId, UserId),
+                     ok;
+                 {ok, 0} -> {error, not_found};
+                 Error -> Error
+             end
+          end,
+    case sherlock:transaction(database, Fun) of
+        ok ->
+            ok;
+        {error, not_found} ->
+            {error, member_not_found};
+        Error ->
+            Error
     end.
 
 update_name(ChatId, NewName, RequesterId) ->
@@ -333,4 +336,38 @@ get_chat(ChatId) ->
     case sherlock:transaction(database, Fun) of
         {ok, Members} ->
             {ok, Members}
+    end.
+
+remove_member(ChatId, UserId, RequesterId) ->
+    % Convert ChatId to integer if it's binary
+    ChatIdInt =
+        case is_binary(ChatId) of
+            true ->
+                binary_to_integer(ChatId);
+            false ->
+                ChatId
+        end,
+
+    case is_owner(ChatId, RequesterId) of
+        true ->
+            Fun = fun(Connection) ->
+                     Query = "DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2",
+                     case epgsql:equery(Connection, Query, [ChatIdInt, UserId]) of
+                         {ok, 1} ->
+                             %  eschat_chatmembers_cache:remove_member(ChatId, UserId),
+                             ok;
+                         {ok, 0} -> {error, not_found};
+                         Error -> Error
+                     end
+                  end,
+            case sherlock:transaction(database, Fun) of
+                ok ->
+                    ok;
+                {error, not_found} ->
+                    {error, member_not_found};
+                Error ->
+                    Error
+            end;
+        false ->
+            {error, not_owner}
     end.

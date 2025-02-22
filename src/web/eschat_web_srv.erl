@@ -116,7 +116,7 @@ restart() ->
        {"/api/:vsn/chats/", eschat_chats_h, []},
        {"/api/:vsn/chat/:id", eschat_chat_h, []},
        {"/api/:vsn/chat/:action/:id", eschat_chat_h, []},
-      %  {"/api/:vsn/session[/:id]", eschat_session_h, []},
+       {"/api/:vsn/messages", eschat_messages_h, []},
        {"/api/:vsn/ws", eschat_ws_h, []},
        {'_', eschat_notfound_h, []}]}],
   Dispatch = cowboy_router:compile(Rotes),
